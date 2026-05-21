@@ -1,0 +1,19 @@
+name: PR Checks
+
+on:
+  pull_request:
+
+jobs:
+  validate_pr_title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate pull request title prefix
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const required = ["feat:", "fix:", "chore:", "docs:", "refactor:", "test:", "ci:"];
+            const title = context.payload.pull_request.title || "";
+            const ok = required.some(prefix => title.startsWith(prefix));
+            if (!ok) {
+              core.setFailed(`PR title must start with one of: ${required.join(", ")}. Current title: "${title}"`);
+            }
