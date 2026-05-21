@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a defect affecting platform, data, or model behavior.
+title: "bug: <short summary>"
+labels: ["area/platform", "priority/p0"]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened? Include impact and frequency.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Provide deterministic steps or payloads.
+      placeholder: |-
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: dev/staging/prod and relevant service versions.
+    validations:
+      required: true
