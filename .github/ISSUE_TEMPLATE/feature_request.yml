@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose an improvement for the low-pesticide agri AI program.
+title: "feat: <short summary>"
+labels: ["area/product", "priority/p1"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user or business outcome is blocked?
+      placeholder: Describe current pain and impact.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the desired behavior and scope.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List measurable completion criteria.
+      placeholder: |-
+        - Criterion 1
+        - Criterion 2
+    validations:
+      required: true
