@@ -1,0 +1,188 @@
+name: Best Version Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      field_impact:
+        description: "Field impact score (0-100)"
+        required: false
+        type: number
+      model_quality:
+        description: "Model quality score (0-100)"
+        required: false
+        type: number
+      reliability:
+        description: "Reliability score (0-100)"
+        required: false
+        type: number
+      safety:
+        description: "Safety score (0-100)"
+        required: false
+        type: number
+      delivery_speed:
+        description: "Delivery speed score (0-100)"
+        required: false
+        type: number
+      pesticide_reduction_percent_min:
+        description: "Pesticide reduction percent"
+        required: false
+        type: number
+      yield_delta_percent_min:
+        description: "Yield delta percent"
+        required: false
+        type: number
+      uptime_percent_min:
+        description: "Uptime percent"
+        required: false
+        type: number
+      api_p95_latency_ms_max:
+        description: "API p95 latency in ms"
+        required: false
+        type: number
+      harmful_false_recommendation_rate_max:
+        description: "Harmful false recommendation rate"
+        required: false
+        type: number
+      change_failure_rate_max:
+        description: "Change failure rate"
+        required: false
+        type: number
+      rollback_time_minutes_max:
+        description: "Rollback time in minutes"
+        required: false
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  best-version-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Evaluate best version gate
+        id: evaluate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const core = require("@actions/core");
+            const config = JSON.parse(fs.readFileSync(".github/best_version_gate_config.json", "utf8"));
+
+            const weightedKeys = ["field_impact", "model_quality", "reliability", "safety", "delivery_speed"];
+            const hardKeys = Object.keys(config.hard_gates);
+            const allKeys = [...new Set([...weightedKeys, ...hardKeys])];
+            const fallbackDemo = {
+              field_impact: 88,
+              model_quality: 86,
+              reliability: 90,
+              safety: 92,
+              delivery_speed: 84,
+              pesticide_reduction_percent_min: 72,
+              yield_delta_percent_min: -2,
+              uptime_percent_min: 99.95,
+              api_p95_latency_ms_max: 430,
+              harmful_false_recommendation_rate_max: 0.015,
+              change_failure_rate_max: 0.06,
+              rollback_time_minutes_max: 20
+            };
+
+            const labels = ((context.payload.pull_request && context.payload.pull_request.labels) || []).map((l) => l.name);
+
+            function parseMetric(key) {
+              const dispatchRaw = context.payload.inputs ? context.payload.inputs[key] : undefined;
+              if (dispatchRaw !== undefined && dispatchRaw !== null && String(dispatchRaw).trim() !== "") {
+                const n = Number(dispatchRaw);
+                if (Number.isFinite(n)) {
+                  return { value: n, source: "workflow_dispatch input" };
+                }
+              }
+              const labelPrefix = `bvg-${key}-`;
+              const label = labels.find((n) => n.startsWith(labelPrefix));
+              if (label) {
+                const n = Number(label.slice(labelPrefix.length));
+                if (Number.isFinite(n)) {
+                  return { value: n, source: `pr label (${label})` };
+                }
+              }
+              return { value: Number(fallbackDemo[key]), source: "fallback demo value" };
+            }
+
+            let fallbackUsed = false;
+            const metrics = {};
+            for (const key of allKeys) {
+              metrics[key] = parseMetric(key);
+              if (metrics[key].source === "fallback demo value") {
+                fallbackUsed = true;
+              }
+            }
+
+            let weightedScore = 0;
+            for (const key of weightedKeys) {
+              weightedScore += metrics[key].value * (config.weights[key] / 100);
+            }
+
+            const hardResults = hardKeys.map((key) => {
+              const threshold = config.hard_gates[key];
+              const value = metrics[key].value;
+              const pass = key.endsWith("_max") ? value <= threshold : value >= threshold;
+              return { key, value, threshold, pass };
+            });
+
+            const scorePass = weightedScore >= config.score_threshold;
+            const hardPass = hardResults.every((r) => r.pass);
+            const verdict = scorePass && hardPass ? "PASS" : "FAIL";
+
+            const lines = [];
+            lines.push("# Best Version Gate Verdict");
+            lines.push("");
+            if (fallbackUsed) {
+              lines.push("> WARNING: One or more metrics used fallback demo values. This run is not production-validated.");
+              core.warning("Fallback/demo metrics were used; this run is not production-validated.");
+            } else {
+              lines.push("> All metrics were sourced from workflow_dispatch inputs and/or PR labels.");
+            }
+            lines.push("");
+            lines.push(`- Weighted score: **${weightedScore.toFixed(2)} / 100** (threshold: **${config.score_threshold}**) -> **${scorePass ? "PASS" : "FAIL"}**`);
+            lines.push(`- Hard gates overall: **${hardPass ? "PASS" : "FAIL"}**`);
+            lines.push(`- Final verdict: **${verdict}**`);
+            lines.push("");
+            lines.push("## Weighted Metrics");
+            lines.push("| Metric | Value | Weight | Source |");
+            lines.push("|---|---:|---:|---|");
+            for (const key of weightedKeys) {
+              lines.push(`| ${key} | ${metrics[key].value} | ${config.weights[key]}% | ${metrics[key].source} |`);
+            }
+            lines.push("");
+            lines.push("## Hard Gates");
+            lines.push("| Metric | Value | Threshold | Pass/Fail | Source |");
+            lines.push("|---|---:|---:|---|---|");
+            for (const r of hardResults) {
+              lines.push(`| ${r.key} | ${r.value} | ${r.threshold} | ${r.pass ? "PASS" : "FAIL"} | ${metrics[r.key].source} |`);
+            }
+
+            const markdown = lines.join("\\n");
+            fs.writeFileSync("verdict.md", markdown, "utf8");
+            core.setOutput("verdict", verdict);
+            core.setOutput("verdict_md", markdown);
+
+      - name: Show verdict file
+        run: cat verdict.md
+
+      - name: Post or update sticky PR comment
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: best-version-gate
+          message: ${{ steps.evaluate.outputs.verdict_md }}
+
+      - name: Fail workflow when verdict is FAIL
+        if: ${{ steps.evaluate.outputs.verdict == 'FAIL' }}
+        run: |
+          echo "Best Version Gate verdict is FAIL."
+          exit 1
