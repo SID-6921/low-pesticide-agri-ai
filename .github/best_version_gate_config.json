@@ -1,0 +1,19 @@
+{
+  "weights": {
+    "field_impact": 40,
+    "model_quality": 20,
+    "reliability": 20,
+    "safety": 10,
+    "delivery_speed": 10
+  },
+  "score_threshold": 85,
+  "hard_gates": {
+    "pesticide_reduction_percent_min": 70,
+    "yield_delta_percent_min": -3,
+    "uptime_percent_min": 99.9,
+    "api_p95_latency_ms_max": 500,
+    "harmful_false_recommendation_rate_max": 0.02,
+    "change_failure_rate_max": 0.10,
+    "rollback_time_minutes_max": 30
+  }
+}
